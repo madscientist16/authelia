@@ -191,6 +191,7 @@ const (
 	FormParameterScope        = valueScope
 	FormParameterIssuer       = valueIss
 	FormParameterPrompt       = "prompt"
+	FormParameterMaximumAge   = "max_age"
 	FormParameterClaims       = "claims"
 )
 
@@ -226,13 +227,16 @@ const (
 )
 
 const (
-	JWTHeaderTypeValueTokenIntrospectionJWT = "token-introspection+jwt"
-	JWTHeaderTypeValueAccessTokenJWT        = "at+jwt"
+	JWTHeaderTypeValueAccessTokenJWT = "at+jwt"
 )
 
 // Paths.
 const (
-	EndpointPathConsent                           = "/consent"
+	EndpointPathConsent                    = "/consent/openid"
+	EndpointPathConsentDecision            = EndpointPathConsent + "/decision"
+	EndpointPathConsentLogin               = EndpointPathConsent + "/login"
+	EndpointPathRFC8628UserVerificationURL = EndpointPathConsent + "/" + EndpointDeviceAuthorization
+
 	EndpointPathWellKnownOpenIDConfiguration      = "/.well-known/openid-configuration"
 	EndpointPathWellKnownOAuthAuthorizationServer = "/.well-known/oauth-authorization-server"
 	EndpointPathJWKs                              = "/jwks.json"
@@ -246,8 +250,6 @@ const (
 	EndpointPathRevocation                 = EndpointPathRoot + "/" + EndpointRevocation
 	EndpointPathDeviceAuthorization        = EndpointPathRoot + "/" + EndpointDeviceAuthorization
 	EndpointPathPushedAuthorizationRequest = EndpointPathRoot + "/" + EndpointPushedAuthorizationRequest
-
-	EndpointPathRFC8628UserVerificationURL = EndpointPathRoot + "/device-code/user-verification"
 )
 
 // Authentication Method Reference Values https://datatracker.ietf.org/doc/html/rfc8176
