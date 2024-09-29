@@ -7,6 +7,8 @@ draft: false
 images: []
 weight: 110220
 toc: true
+aliases:
+  - /c/oidc/registered-clients
 seo:
   title: "" # custom title (optional)
   description: "" # custom description (recommended)
@@ -71,15 +73,32 @@ identity_providers:
         pkce_challenge_method: 'S256'
         authorization_signed_response_alg: 'none'
         authorization_signed_response_key_id: ''
+        authorization_encrypted_response_alg: 'none'
+        authorization_encrypted_response_enc: 'A128CBC-HS256'
+        authorization_encrypted_response_key_id: ''
         id_token_signed_response_alg: 'RS256'
         id_token_signed_response_key_id: ''
+        id_token_encrypted_response_alg: 'none'
+        id_token_encrypted_response_enc: 'A128CBC-HS256'
+        id_token_encrypted_response_key_id: ''
         access_token_signed_response_alg: 'none'
         access_token_signed_response_key_id: ''
+        access_token_encrypted_response_alg: 'none'
+        access_token_encrypted_response_enc: 'A128CBC-HS256'
+        access_token_encrypted_response_key_id: ''
         userinfo_signed_response_alg: 'none'
         userinfo_signed_response_key_id: ''
+        userinfo_encrypted_response_alg: 'none'
+        userinfo_encrypted_response_enc: 'A128CBC-HS256'
+        userinfo_encrypted_response_key_id: ''
         introspection_signed_response_alg: 'none'
         introspection_signed_response_key_id: ''
+        introspection_encrypted_response_alg: 'none'
+        introspection_encrypted_response_enc: 'A128CBC-HS256'
+        introspection_encrypted_response_key_id: ''
         request_object_signing_alg: 'RS256'
+        request_object_encryption_alg: ''
+        request_object_encryption_enc: ''
         token_endpoint_auth_method: 'client_secret_basic'
         token_endpoint_auth_signing_alg: 'RS256'
         revocation_endpoint_auth_method: 'client_secret_basic'
@@ -435,15 +454,14 @@ This value is completely ignored if the
 
 The algorithm used to sign the authorization responses.
 
+To be considered valid with exclusion of the value `none`:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `alg` as the value and the use `sig`.
+
 See the response object section of the
-[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information including
-the algorithm column for supported values.
-
-With the exclusion of `none` which returns a traditional authorization response, the algorithm chosen must have a key
-configured in the [jwks] section to be considered valid.
-
-See the response object section of the [integration guide](../../../integration/openid-connect/introduction.md#response-object)
-for more information including the algorithm column for supported values.
+[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information. The
+supported values come from the algorithm column with a use of `sig`.
 
 ### authorization_signed_response_key_id
 
@@ -459,8 +477,65 @@ This value automatically configures the [authorization_signed_response_alg](#aut
 value with the algorithm of the specified key.
 {{< /callout >}}
 
-The key id of the JWK used to sign the ID Tokens in the token responses. The value of this must one of those provided or
-calculated in the [jwks].
+The key id of the JWK used to sign the authorization responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `kid` as the value and the use `sig`.
+
+### authorization_encrypted_response_alg
+
+{{< confkey type="string" default="none" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the whole authorization response will be
+embedded within a signed JWT, and the signed JWT will be nested within an encrypted JWT._
+
+_**Note:** This value is completely ignored if the
+[authorization_encrypted_response_key_id](#authorization_encrypted_response_key_id) is defined._
+
+The content encryption algorithm used to encrypt the authorization responses.
+
+To be considered valid with exclusion of the value `none`:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `alg` as the value and the use `enc`.
+2. The [authorization_signed_response_alg](#authorization_signed_response_alg) or
+   [authorization_signed_response_key_id](#authorization_signed_response_key_id) option must be configured.
+
+See the response object section of the
+[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information. The
+supported values come from the algorithm column with a use of `enc`.
+
+### authorization_encrypted_response_enc
+
+{{< confkey type="string" default="A128CBC-HS256" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the whole authorization response will be
+embedded within a signed JWT, and the signed JWT will be nested within an encrypted JWT._
+
+The encryption algorithm used to encrypt the authorization responses.
+
+See the encryption algorithms section of the
+[integration guide](../../../integration/openid-connect/introduction.md#encryption-algorithms) for more information
+including the algorithm column for supported values.
+
+### authorization_encrypted_response_key_id
+
+{{< confkey type="string" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the whole authorization response will be
+embedded within a signed JWT, and the signed JWT will be nested within an encrypted JWT._
+
+_**Note:** This value automatically configures the [authorization_encrypted_response_alg](#authorization_encrypted_response_alg)
+value with the algorithm of the specified key._
+
+The key id of the JWK used to encrypt authorization responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `kid` as the value and the use `enc`.
 
 ### id_token_signed_response_alg
 
@@ -471,16 +546,16 @@ This value is completely ignored if the [id_token_signed_response_key_id](#id_to
 is defined.
 {{< /callout >}}
 
-The algorithm used to sign the ID Tokens in the token responses.
+The algorithm used to sign the ID Tokens in the token access request responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `alg` as the value and the use `sig`.
 
 See the response object section of the
-[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information including
-the algorithm column for supported values. This value can not be set to `none`.
-
-The algorithm chosen must have a key configured in the [jwks] section to be considered valid.
-
-See the response object section of the [integration guide](../../../integration/openid-connect/introduction.md#response-object)
-for more information including the algorithm column for supported values.
+[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information. The
+supported values come from the algorithm column with a use of `sig`. This option does not support the value `none`.
 
 ### id_token_signed_response_key_id
 
@@ -491,8 +566,63 @@ This value automatically configures the [id_token_signed_response_alg](#id_token
 with the algorithm of the specified key.
 {{< /callout >}}
 
-The key id of the JWK used to sign the ID Tokens in the token responses. The value of this must one of those provided or
-calculated in the issuer [jwks] section.
+The key id of the JWK used to sign the ID Tokens in the token access request responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `kid` as the value and the use `sig`.
+
+### id_token_encrypted_response_alg
+
+{{< confkey type="string" default="none" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the signed JWT will be
+nested within an encrypted JWT._
+
+_**Note:** This value is completely ignored if the
+[id_token_encrypted_response_key_id](#id_token_encrypted_response_key_id) is defined._
+
+The content encryption algorithm used to encrypt the ID Tokens in the token access request responses.
+
+To be considered valid with exclusion of the value `none`:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `alg` as the value and the use `enc`.
+
+See the response object section of the
+[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information. The
+supported values come from the algorithm column with a use of `enc`.
+
+### id_token_encrypted_response_enc
+
+{{< confkey type="string" default="A128CBC-HS256" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the signed JWT will be
+nested within an encrypted JWT._
+
+The encryption algorithm used to encrypt the ID Tokens in the token access request responses.
+
+See the encryption algorithms section of the
+[integration guide](../../../integration/openid-connect/introduction.md#encryption-algorithms) for more information
+including the algorithm column for supported values.
+
+### id_token_encrypted_response_key_id
+
+{{< confkey type="string" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the signed JWT will be
+nested within an encrypted JWT._
+
+_**Note:** This value automatically configures the [id_token_encrypted_response_alg](#id_token_encrypted_response_alg)
+value with the algorithm of the specified key._
+
+The key id of the JWK used to encrypt authorization responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `kid` as the value and the use `enc`.
 
 ### access_token_signed_response_alg
 
@@ -503,18 +633,16 @@ This value is completely ignored if the [access_token_signed_response_key_id](#a
 is defined.
 {{< /callout >}}
 
-The algorithm used to sign the JWT Access Tokens in the token responses.
+The algorithm used to sign the Access Tokens in the token Access Request responses.
+
+To be considered valid with exclusion of the value `none`:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `alg` as the value and the use `sig`.
 
 See the response object section of the
-[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information including
-the algorithm column for supported values. This value can not be set to `none`.
-
-The algorithm chosen must have a key configured in the issuer [jwks] section to
-be considered valid. In addition to the values listed we also support `none` as a value
-for this endpoint. When using the `none` value the Access Token is completely opaque and is not a JWT.
-
-See the response object section of the [integration guide](../../../integration/openid-connect/introduction.md#response-object)
-for more information including the algorithm column for supported values.
+[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information. The
+supported values come from the algorithm column with a use of `sig`.
 
 ### access_token_signed_response_key_id
 
@@ -525,9 +653,56 @@ This value automatically configures the [access_token_signed_response_alg](#acce
 algorithm of the specified key.
 {{< /callout >}}
 
-The key id of the JWK used to sign the [JWT Access Tokens](https://oauth.net/2/jwt-access-tokens/) in the token
-responses. The value of this must one of those provided or calculated in the
-issuer [jwks] section.
+The key id of the JWK used to sign the Access Tokens in the token Access Request responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `kid` as the value and the use `sig`.
+
+### access_token_encrypted_response_alg
+
+{{< confkey type="string" default="none" required="no" >}}
+
+_**Note:** This value is completely ignored if the
+[access_token_encrypted_response_key_id](#access_token_encrypted_response_key_id) is defined._
+
+The content encryption algorithm used to encrypt the Access Tokens in the token Access Request responses.
+
+To be considered valid with exclusion of the value `none`:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+`alg` as the value and the use `enc`.
+2. The [access_token_signed_response_alg](#access_token_signed_response_alg) or
+[access_token_signed_response_key_id](#access_token_signed_response_key_id) option must be configured.
+
+See the response object section of the
+[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information. The
+supported values come from the algorithm column with a use of `enc`.
+
+### access_token_encrypted_response_enc
+
+{{< confkey type="string" default="A128CBC-HS256" required="no" >}}
+
+The encryption algorithm used to encrypt the Access Tokens in the token Access Request responses.
+
+See the encryption algorithms section of the
+[integration guide](../../../integration/openid-connect/introduction.md#encryption-algorithms) for more information
+including the algorithm column for supported values.
+
+### access_token_encrypted_response_key_id
+
+{{< confkey type="string" required="no" >}}
+
+_**Note:** This value automatically configures the [access_token_encrypted_response_alg](#access_token_encrypted_response_alg)
+value with the algorithm of the specified key._
+
+The key id of the JWK used to encrypt authorization responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `kid` as the value and the use `enc`.
 
 ### userinfo_signed_response_alg
 
@@ -537,14 +712,16 @@ issuer [jwks] section.
 This value is completely ignored if the [userinfo_signed_response_key_id](#userinfo_signed_response_key_id) is defined.
 {{< /callout >}}
 
-The algorithm used to sign the userinfo endpoint responses.
+The algorithm used to sign the User Info responses.
 
-See the response object section of the [integration guide](../../../integration/openid-connect/introduction.md#response-object)
-for more information including the algorithm column for supported values. In addition to the values listed we also
-support `none` as a value for this endpoint.
+To be considered valid with exclusion of the value `none`:
 
-The algorithm chosen must have a key configured in the issuer [jwks] section to
-be considered valid.
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `alg` as the value and the use `sig`.
+
+See the response object section of the
+[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information. The
+supported values come from the algorithm column with a use of `sig`.
 
 ### userinfo_signed_response_key_id
 
@@ -555,9 +732,65 @@ This value automatically configures the [userinfo_signed_response_alg](#userinfo
 with the algorithm of the specified key.
 {{< /callout >}}
 
-The key id of the JWK used to sign the userinfo endpoint responses in the token responses. The value of this must one of
-those provided or calculated in the
-issuer [jwks] section.
+The key id of the JWK used to sign the User Info responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `kid` as the value and the use `sig`.
+
+### userinfo_encrypted_response_alg
+
+{{< confkey type="string" default="none" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the signed JWT will be
+nested within an encrypted JWT._
+
+_**Note:** This value is completely ignored if the
+[userinfo_encrypted_response_key_id](#userinfo_encrypted_response_key_id) is defined._
+
+The content encryption algorithm used to encrypt the User Info responses.
+
+To be considered valid with exclusion of the value `none`:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `alg` as the value and the use `enc`.
+2. The [userinfo_signed_response_alg](#userinfo_signed_response_alg) or
+   [userinfo_signed_response_key_id](#userinfo_signed_response_key_id) option must be configured.
+
+See the response object section of the
+[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information. The
+supported values come from the algorithm column with a use of `enc`.
+
+### userinfo_encrypted_response_enc
+
+{{< confkey type="string" default="A128CBC-HS256" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the signed JWT will be
+nested within an encrypted JWT._
+
+The encryption algorithm used to encrypt the User Info responses.
+
+See the encryption algorithms section of the
+[integration guide](../../../integration/openid-connect/introduction.md#encryption-algorithms) for more information
+including the algorithm column for supported values.
+
+### userinfo_encrypted_response_key_id
+
+{{< confkey type="string" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the signed JWT will be
+nested within an encrypted JWT._
+
+_**Note:** This value automatically configures the [userinfo_encrypted_response_alg](#userinfo_encrypted_response_alg)
+value with the algorithm of the specified key._
+
+The key id of the JWK used to encrypt authorization responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `kid` as the value and the use `enc`.
 
 ### introspection_signed_response_alg
 
@@ -568,15 +801,18 @@ This value is completely ignored if the
 [introspection_signed_response_key_id](#introspection_signed_response_key_id) is defined.
 {{< /callout >}}
 
-The algorithm used to sign the Introspection response. By default it is set to `none` which results in the response
-not being signed and the encoding being JSON.
+The algorithm used to sign the Introspection responses.
 
-If configured to any other value the response is a JWT in the `application/token-introspection+jwt` format.
+If configured to any value other than `none` the response is a JWT in the `application/token-introspection+jwt` format.
 
-See the response object section of the [integration guide](../../../integration/openid-connect/introduction.md#response-object)
-for more information including the algorithm column for supported values.
+To be considered valid with exclusion of the value `none`:
 
-The algorithm chosen must have a key configured in the issuer [jwks] section to be considered valid.
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `alg` as the value and the use `sig`.
+
+See the response object section of the
+[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information. The
+supported values come from the algorithm column with a use of `sig`.
 
 ### introspection_signed_response_key_id
 
@@ -587,14 +823,91 @@ This value automatically configures the [introspection_signed_response_alg](#int
 value with the algorithm of the specified key.
 {{< /callout >}}
 
-The key id of the JWK used to sign the Introspection responses. The value of this must one of those provided or
-calculated in the issuer [jwks] section.
+The key id of the JWK used to sign the Introspection responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `kid` as the value and the use `sig`.
+
+### introspection_encrypted_response_alg
+
+{{< confkey type="string" default="none" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the signed JWT will be
+nested within an encrypted JWT._
+
+_**Note:** This value is completely ignored if the
+[introspection_encrypted_response_key_id](#introspection_encrypted_response_key_id) is defined._
+
+The content encryption algorithm used to encrypt the Introspection responses.
+
+To be considered valid with exclusion of the value `none`:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `alg` as the value and the use `enc`.
+2. The [introspection_signed_response_alg](#introspection_signed_response_alg) or
+   [introspection_signed_response_key_id](#introspection_signed_response_key_id) option must be configured.
+
+See the response object section of the
+[integration guide](../../../integration/openid-connect/introduction.md#response-object) for more information. The
+supported values come from the algorithm column with a use of `enc`.
+
+### introspection_encrypted_response_enc
+
+{{< confkey type="string" default="A128CBC-HS256" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the signed JWT will be
+nested within an encrypted JWT._
+
+The encryption algorithm used to encrypt the Introspection responses.
+
+See the encryption algorithms section of the
+[integration guide](../../../integration/openid-connect/introduction.md#encryption-algorithms) for more information
+including the algorithm column for supported values.
+
+### introspection_encrypted_response_key_id
+
+{{< confkey type="string" required="no" >}}
+
+_**Important Note:** A majority of clients will not support this option as the signed JWT will be
+nested within an encrypted JWT._
+
+_**Note:** This value automatically configures the [introspection_encrypted_response_alg](#introspection_encrypted_response_alg)
+value with the algorithm of the specified key._
+
+The key id of the JWK used to encrypt authorization responses.
+
+To be considered valid:
+
+1. The chosen value must have a JSON Web Key configured in the [jwks] section with the same
+   `kid` as the value and the use `enc`.
 
 ### request_object_signing_alg
 
 {{< confkey type="string" default="RS256" required="no" >}}
 
 The JWT signing algorithm accepted for request objects.
+
+See the request object section of the
+[integration guide](../../../integration/openid-connect/introduction.md#request-object) for more information including
+the algorithm column for supported values.
+
+### request_object_encryption_alg
+
+{{< confkey type="string" required="no" >}}
+
+The JWT content encryption algorithm accepted for request objects.
+
+See the request object section of the
+[integration guide](../../../integration/openid-connect/introduction.md#request-object) for more information including
+the algorithm column for supported values.
+
+### request_object_encryption_enc
+
+{{< confkey type="string" required="no" >}}
+
+The JWT encryption algorithm accepted for request objects.
 
 See the request object section of the
 [integration guide](../../../integration/openid-connect/introduction.md#request-object) for more information including

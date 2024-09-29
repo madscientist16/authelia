@@ -328,7 +328,8 @@ func validateOIDCIssuerJSONWebKeys(config *schema.IdentityProvidersOpenIDConnect
 	)
 
 	config.Discovery.ResponseObjectSigningKeyIDs = make([]string, len(config.JSONWebKeys))
-	config.Discovery.DefaultKeyIDs = map[string]string{}
+	config.Discovery.DefaultSigKeyIDs = map[string]string{}
+	config.Discovery.DefaultEncKeyIDs = map[string]string{}
 
 	for i := 0; i < len(config.JSONWebKeys); i++ {
 		if config.JSONWebKeys[i].Key == nil {
@@ -384,15 +385,21 @@ func validateOIDCIssuerJSONWebKeys(config *schema.IdentityProvidersOpenIDConnect
 }
 
 func validateOIDCIssuerPrivateKeysUseAlg(i int, props *JWKProperties, config *schema.IdentityProvidersOpenIDConnect, validator *schema.StructValidator) {
-	switch config.JSONWebKeys[i].Use {
-	case "":
+	if config.JSONWebKeys[i].Use == "" {
 		config.JSONWebKeys[i].Use = props.Use
-	case oidc.KeyUseSignature:
-		break
-	default:
-		validator.Push(fmt.Errorf(errFmtOIDCProviderPrivateKeysInvalidOptionOneOf, i+1, config.JSONWebKeys[i].KeyID, attrOIDCKeyUse, utils.StringJoinOr([]string{oidc.KeyUseSignature}), config.JSONWebKeys[i].Use))
 	}
 
+	switch config.JSONWebKeys[i].Use {
+	case oidc.KeyUseSignature:
+		validateOIDCIssuerPrivateKeysSigAlg(i, props, config, validator)
+	case oidc.KeyUseEncryption:
+		validateOIDCIssuerPrivateKeysEncAlg(i, props, config, validator)
+	default:
+		validator.Push(fmt.Errorf(errFmtOIDCProviderPrivateKeysInvalidOptionOneOf, i+1, config.JSONWebKeys[i].KeyID, attrOIDCKeyUse, utils.StringJoinOr([]string{oidc.KeyUseSignature, oidc.KeyUseEncryption}), config.JSONWebKeys[i].Use))
+	}
+}
+
+func validateOIDCIssuerPrivateKeysSigAlg(i int, props *JWKProperties, config *schema.IdentityProvidersOpenIDConnect, validator *schema.StructValidator) {
 	switch {
 	case config.JSONWebKeys[i].Algorithm == "":
 		config.JSONWebKeys[i].Algorithm = props.Algorithm
@@ -400,8 +407,31 @@ func validateOIDCIssuerPrivateKeysUseAlg(i int, props *JWKProperties, config *sc
 		fallthrough
 	case utils.IsStringInSlice(config.JSONWebKeys[i].Algorithm, validOIDCIssuerJWKSigningAlgs):
 		if config.JSONWebKeys[i].KeyID != "" && config.JSONWebKeys[i].Algorithm != "" {
-			if _, ok := config.Discovery.DefaultKeyIDs[config.JSONWebKeys[i].Algorithm]; !ok {
-				config.Discovery.DefaultKeyIDs[config.JSONWebKeys[i].Algorithm] = config.JSONWebKeys[i].KeyID
+			if _, ok := config.Discovery.DefaultSigKeyIDs[config.JSONWebKeys[i].Algorithm]; !ok {
+				config.Discovery.DefaultSigKeyIDs[config.JSONWebKeys[i].Algorithm] = config.JSONWebKeys[i].KeyID
+			}
+		}
+	default:
+		validator.Push(fmt.Errorf(errFmtOIDCProviderPrivateKeysInvalidOptionOneOf, i+1, config.JSONWebKeys[i].KeyID, attrOIDCAlgorithm, utils.StringJoinOr(validOIDCIssuerJWKSigningAlgs), config.JSONWebKeys[i].Algorithm))
+	}
+
+	if config.JSONWebKeys[i].Algorithm != "" {
+		if !utils.IsStringInSlice(config.JSONWebKeys[i].Algorithm, config.Discovery.ResponseObjectSigningAlgs) {
+			config.Discovery.ResponseObjectSigningAlgs = append(config.Discovery.ResponseObjectSigningAlgs, config.JSONWebKeys[i].Algorithm)
+		}
+	}
+}
+
+func validateOIDCIssuerPrivateKeysEncAlg(i int, props *JWKProperties, config *schema.IdentityProvidersOpenIDConnect, validator *schema.StructValidator) {
+	switch {
+	case config.JSONWebKeys[i].Algorithm == "":
+		config.JSONWebKeys[i].Algorithm = props.Algorithm
+
+		fallthrough
+	case utils.IsStringInSlice(config.JSONWebKeys[i].Algorithm, validOIDCJWKEncryptionAlgs):
+		if config.JSONWebKeys[i].KeyID != "" && config.JSONWebKeys[i].Algorithm != "" {
+			if _, ok := config.Discovery.DefaultEncKeyIDs[config.JSONWebKeys[i].Algorithm]; !ok {
+				config.Discovery.DefaultEncKeyIDs[config.JSONWebKeys[i].Algorithm] = config.JSONWebKeys[i].KeyID
 			}
 		}
 	default:
@@ -769,10 +799,10 @@ func validateOIDCClientJSONWebKeysListKeyUseAlg(c, i int, props *JWKProperties, 
 	switch config.Clients[c].JSONWebKeys[i].Use {
 	case "":
 		config.Clients[c].JSONWebKeys[i].Use = props.Use
-	case oidc.KeyUseSignature:
+	case oidc.KeyUseSignature, oidc.KeyUseEncryption:
 		break
 	default:
-		validator.Push(fmt.Errorf(errFmtOIDCClientPublicKeysInvalidOptionOneOf, config.Clients[c].ID, i+1, config.Clients[c].JSONWebKeys[i].KeyID, attrOIDCKeyUse, utils.StringJoinOr([]string{oidc.KeyUseSignature}), config.Clients[c].JSONWebKeys[i].Use))
+		validator.Push(fmt.Errorf(errFmtOIDCClientPublicKeysInvalidOptionOneOf, config.Clients[c].ID, i+1, config.Clients[c].JSONWebKeys[i].KeyID, attrOIDCKeyUse, utils.StringJoinOr([]string{oidc.KeyUseSignature, oidc.KeyUseEncryption}), config.Clients[c].JSONWebKeys[i].Use))
 	}
 
 	switch {
@@ -1291,6 +1321,8 @@ func validateOIDCClientEndpointAuthClientSecretJWT(c int, config *schema.Identit
 	case !utils.IsStringInSlice(valueAlg, validOIDCClientTokenEndpointAuthSigAlgsClientSecretJWT):
 		validator.Push(fmt.Errorf(errFmtOIDCClientInvalidEndpointAuthSigAlg, config.Clients[c].ID, keyAlg, utils.StringJoinOr(validOIDCClientTokenEndpointAuthSigAlgsClientSecretJWT), keyMethod, valueMethod))
 	}
+
+	return valueAlg
 }
 
 func validateOIDCClientEndpointAuthPublicKeyJWT(c int, config *schema.IdentityProvidersOpenIDConnect, keyMethod, valueMethod, keyAlg, valueAlg string, validator *schema.StructValidator) {
@@ -1340,8 +1372,6 @@ func validateOIDDClientSigningAlgsIDToken(c int, config *schema.IdentityProvider
 			config.Clients[c].IDTokenSignedResponseAlg = getResponseObjectAlgFromKID(config, config.Clients[c].IDTokenSignedResponseKeyID, config.Clients[c].IDTokenSignedResponseAlg)
 		}
 	}
-
-	return valueAlg
 }
 
 func validateOIDDClientSigningAlgsAccessToken(c int, config *schema.IdentityProvidersOpenIDConnect, validator *schema.StructValidator) {
