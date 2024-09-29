@@ -26,7 +26,7 @@ type OpenIDConnectProvider struct {
 	*Store
 	*Config
 
-	KeyManager *KeyManager
+	Issuer *Issuer
 
 	discovery OpenIDConnectWellKnownConfiguration
 
@@ -151,23 +151,41 @@ type Client interface {
 
 	GetClaimsStrategy() (strategy ClaimsStrategy)
 
-	GetAuthorizationSignedResponseAlg() (alg string)
 	GetAuthorizationSignedResponseKeyID() (kid string)
+	GetAuthorizationSignedResponseAlg() (alg string)
+	GetAuthorizationEncryptedResponseKeyID() (kid string)
+	GetAuthorizationEncryptedResponseAlg() (alg string)
+	GetAuthorizationEncryptedResponseEnc() (enc string)
 
-	GetIDTokenSignedResponseAlg() (alg string)
 	GetIDTokenSignedResponseKeyID() (kid string)
+	GetIDTokenSignedResponseAlg() (alg string)
+	GetIDTokenEncryptedResponseKeyID() (kid string)
+	GetIDTokenEncryptedResponseAlg() (kid string)
+	GetIDTokenEncryptedResponseEnc() (kid string)
 
-	GetAccessTokenSignedResponseAlg() (alg string)
 	GetAccessTokenSignedResponseKeyID() (kid string)
+	GetAccessTokenSignedResponseAlg() (alg string)
+	GetAccessTokenEncryptedResponseKeyID() (kid string)
+	GetAccessTokenEncryptedResponseAlg() (alg string)
+	GetAccessTokenEncryptedResponseEnc() (enc string)
 	GetEnableJWTProfileOAuthAccessTokens() bool
 
-	GetUserinfoSignedResponseAlg() (alg string)
 	GetUserinfoSignedResponseKeyID() (kid string)
+	GetUserinfoSignedResponseAlg() (alg string)
+	GetUserinfoEncryptedResponseKeyID() (kid string)
+	GetUserinfoEncryptedResponseAlg() (alg string)
+	GetUserinfoEncryptedResponseEnc() (enc string)
 
-	GetIntrospectionSignedResponseAlg() (alg string)
 	GetIntrospectionSignedResponseKeyID() (kid string)
+	GetIntrospectionSignedResponseAlg() (alg string)
+	GetIntrospectionEncryptedResponseKeyID() (kid string)
+	GetIntrospectionEncryptedResponseAlg() (kid string)
+	GetIntrospectionEncryptedResponseEnc() (kid string)
 
 	GetRequirePushedAuthorizationRequests() (enforce bool)
+
+	GetJSONWebKeys() (jwks *jose.JSONWebKeySet)
+	GetJSONWebKeysURI() (uri string)
 
 	GetEnforcePKCE() (enforce bool)
 	GetEnforcePKCEChallengeMethod() (enforce bool)
@@ -235,7 +253,7 @@ type AuthorizationServerIssuerIdentificationProvider interface {
 // JWTSecuredResponseModeProvider provides JARM related methods.
 type JWTSecuredResponseModeProvider interface {
 	GetJWTSecuredAuthorizeResponseModeLifespan(ctx context.Context) (lifespan time.Duration)
-	GetJWTSecuredAuthorizeResponseModeSigner(ctx context.Context) (signer fjwt.Signer)
+	GetJWTSecuredAuthorizeResponseModeStrategy(ctx context.Context) (strategy fjwt.Strategy)
 	GetJWTSecuredAuthorizeResponseModeIssuer(ctx context.Context) (issuer string)
 }
 
@@ -1033,6 +1051,7 @@ type Number interface {
 var (
 	_ Client                                                       = (*RegisteredClient)(nil)
 	_ oauthelia2.Client                                            = (*RegisteredClient)(nil)
+	_ oauthelia2.UserInfoClient                                    = (*RegisteredClient)(nil)
 	_ oauthelia2.RotatedClientSecretsClient                        = (*RegisteredClient)(nil)
 	_ oauthelia2.ProofKeyCodeExchangeClient                        = (*RegisteredClient)(nil)
 	_ oauthelia2.ClientAuthenticationPolicyClient                  = (*RegisteredClient)(nil)

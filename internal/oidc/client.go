@@ -1,6 +1,7 @@
 package oidc
 
 import (
+	"authelia.com/provider/oauth2/token/jwt"
 	"context"
 	"net/url"
 	"time"
@@ -45,34 +46,34 @@ func NewClient(config schema.IdentityProvidersOpenIDConnectClient, c *schema.Ide
 		ConsentPolicy:         NewClientConsentPolicy(config.ConsentMode, config.ConsentPreConfiguredDuration),
 		RequestedAudienceMode: NewClientRequestedAudienceMode(config.RequestedAudienceMode),
 
-		AuthorizationSignedResponseAlg:      config.AuthorizationSignedResponseAlg,
-		AuthorizationSignedResponseKeyID:    config.AuthorizationSignedResponseKeyID,
-		AuthorizationEncryptedResponseAlg:   config.AuthorizationEncryptedResponseAlg,
-		AuthorizationEncryptedResponseEnc:   config.AuthorizationEncryptedResponseEnc,
-		AuthorizationEncryptedResponseKeyID: config.AuthorizationEncryptedResponseKeyID,
-		IDTokenSignedResponseAlg:            config.IDTokenSignedResponseAlg,
-		IDTokenSignedResponseKeyID:          config.IDTokenSignedResponseKeyID,
-		IDTokenEncryptedResponseAlg:         config.IDTokenEncryptedResponseAlg,
-		IDTokenEncryptedResponseEnc:         config.IDTokenEncryptedResponseEnc,
-		IDTokenEncryptedResponseKeyID:       config.IDTokenEncryptedResponseKeyID,
-		AccessTokenSignedResponseAlg:        config.AccessTokenSignedResponseAlg,
-		AccessTokenSignedResponseKeyID:      config.AccessTokenSignedResponseKeyID,
-		AccessTokenEncryptedResponseAlg:     config.AccessTokenEncryptedResponseAlg,
-		AccessTokenEncryptedResponseEnc:     config.AccessTokenEncryptedResponseEnc,
-		AccessTokenEncryptedResponseKeyID:   config.AccessTokenEncryptedResponseKeyID,
-		UserinfoSignedResponseAlg:           config.UserinfoSignedResponseAlg,
-		UserinfoSignedResponseKeyID:         config.UserinfoSignedResponseKeyID,
-		UserinfoEncryptedResponseAlg:        config.UserinfoEncryptedResponseAlg,
-		UserinfoEncryptedResponseEnc:        config.UserinfoEncryptedResponseEnc,
-		UserinfoEncryptedResponseKeyID:      config.UserinfoEncryptedResponseKeyID,
-		IntrospectionSignedResponseAlg:      config.IntrospectionSignedResponseAlg,
-		IntrospectionSignedResponseKeyID:    config.IntrospectionSignedResponseKeyID,
-		IntrospectionEncryptedResponseAlg:   config.IntrospectionEncryptedResponseAlg,
-		IntrospectionEncryptedResponseEnc:   config.IntrospectionEncryptedResponseEnc,
-		IntrospectionEncryptedResponseKeyID: config.IntrospectionEncryptedResponseKeyID,
-		RequestObjectSigningAlg:             config.RequestObjectSigningAlg,
-		RequestObjectEncryptionAlg:          config.RequestObjectEncryptionAlg,
-		RequestObjectEncryptionEnc:          config.RequestObjectEncryptionEnc,
+		AuthorizationSignedResponseAlg:                   config.AuthorizationSignedResponseAlg,
+		AuthorizationSignedResponseKeyID:                 config.AuthorizationSignedResponseKeyID,
+		AuthorizationEncryptedResponseAlg:                config.AuthorizationEncryptedResponseAlg,
+		AuthorizationEncryptedResponseEnc:                config.AuthorizationEncryptedResponseEnc,
+		AuthorizationEncryptedResponseKeyID:              config.AuthorizationEncryptedResponseKeyID,
+		IDTokenSignedResponseAlg:                         config.IDTokenSignedResponseAlg,
+		IDTokenSignedResponseKeyID:                       config.IDTokenSignedResponseKeyID,
+		IDTokenEncryptedResponseAlg:                      config.IDTokenEncryptedResponseAlg,
+		IDTokenEncryptedResponseEnc:                      config.IDTokenEncryptedResponseEnc,
+		IDTokenEncryptedResponseKeyID:                    config.IDTokenEncryptedResponseKeyID,
+		AccessTokenSignedResponseAlg:                     config.AccessTokenSignedResponseAlg,
+		AccessTokenSignedResponseKeyID:                   config.AccessTokenSignedResponseKeyID,
+		AccessTokenEncryptedResponseAlg:                  config.AccessTokenEncryptedResponseAlg,
+		AccessTokenEncryptedResponseEnc:                  config.AccessTokenEncryptedResponseEnc,
+		AccessTokenEncryptedResponseKeyID:                config.AccessTokenEncryptedResponseKeyID,
+		UserinfoSignedResponseAlg:                        config.UserinfoSignedResponseAlg,
+		UserinfoSignedResponseKeyID:                      config.UserinfoSignedResponseKeyID,
+		UserinfoEncryptedResponseAlg:                     config.UserinfoEncryptedResponseAlg,
+		UserinfoEncryptedResponseEnc:                     config.UserinfoEncryptedResponseEnc,
+		UserinfoEncryptedResponseKeyID:                   config.UserinfoEncryptedResponseKeyID,
+		IntrospectionSignedResponseAlg:                   config.IntrospectionSignedResponseAlg,
+		IntrospectionSignedResponseKeyID:                 config.IntrospectionSignedResponseKeyID,
+		IntrospectionEncryptedResponseAlg:                config.IntrospectionEncryptedResponseAlg,
+		IntrospectionEncryptedResponseEnc:                config.IntrospectionEncryptedResponseEnc,
+		IntrospectionEncryptedResponseKeyID:              config.IntrospectionEncryptedResponseKeyID,
+		RequestObjectSigningAlg:                          config.RequestObjectSigningAlg,
+		RequestObjectEncryptionAlg:                       config.RequestObjectEncryptionAlg,
+		RequestObjectEncryptionEnc:                       config.RequestObjectEncryptionEnc,
 		TokenEndpointAuthMethod:                          config.TokenEndpointAuthMethod,
 		TokenEndpointAuthSigningAlg:                      config.TokenEndpointAuthSigningAlg,
 		RevocationEndpointAuthMethod:                     config.RevocationEndpointAuthMethod,
@@ -83,7 +84,7 @@ func NewClient(config schema.IdentityProvidersOpenIDConnectClient, c *schema.Ide
 		PushedAuthorizationRequestEndpointAuthSigningAlg: config.PushedAuthorizationRequestAuthSigningAlg,
 
 		JSONWebKeysURI: config.JSONWebKeysURI,
-		JSONWebKeys:    NewPublicJSONWebKeySetFromSchemaJWK(config.JSONWebKeys),
+		JSONWebKeys:    NewJSONWebKeySet(config.JSONWebKeys),
 	}
 
 	if policies == nil {
@@ -124,6 +125,35 @@ func (c *RegisteredClient) GetName() (name string) {
 // GetClientSecret returns the oauth2.ClientSecret.
 func (c *RegisteredClient) GetClientSecret() (secret oauthelia2.ClientSecret) {
 	return c.ClientSecret
+}
+
+// GetClientSecretPlainText returns the ClientSecret as plaintext if available. The semantics of this function
+// return values are important.
+// If the client is not configured with a secret the return should be:
+//   - secret with value nil, ok with value false, and err with value of nil
+//
+// If the client is configured with a secret but is hashed or otherwise not a plaintext value:
+//   - secret with value nil, ok with value true, and err with value of nil
+//
+// If an error occurs retrieving the secret other than this:
+//   - secret with value nil, ok with value true, and err with value of the error
+//
+// If the plaintext secret is successful:
+//   - secret with value of the bytes of the plaintext secret, ok with value true, and err with value of nil
+func (c *RegisteredClient) GetClientSecretPlainText() (secret []byte, ok bool, err error) {
+	if c.ClientSecret == nil || !c.ClientSecret.Valid() {
+		return nil, false, nil
+	}
+
+	if !c.ClientSecret.IsPlainText() {
+		return nil, true, nil
+	}
+
+	if secret, err = c.ClientSecret.GetPlainTextValue(); err != nil {
+		return nil, true, err
+	}
+
+	return secret, true, nil
 }
 
 // GetRotatedClientSecrets returns the rotated oauth2.ClientSecret values.
@@ -749,4 +779,52 @@ func (c *RegisteredClient) getGrantTypeLifespan(gt oauthelia2.GrantType) (gtl sc
 	default:
 		return gtl
 	}
+}
+
+func NewUserinfoClient(client Client) jwt.Client {
+	return &decoratedUserinfoClient{client: client}
+}
+
+type decoratedUserinfoClient struct {
+	client Client
+}
+
+func (d decoratedUserinfoClient) GetSigningKeyID() (kid string) {
+	return d.client.GetUserinfoSignedResponseKeyID()
+}
+
+func (d decoratedUserinfoClient) GetSigningAlg() (alg string) {
+	return d.client.GetUserinfoSignedResponseAlg()
+}
+
+func (d decoratedUserinfoClient) GetEncryptionKeyID() (kid string) {
+	return d.client.GetUserinfoEncryptedResponseKeyID()
+}
+
+func (d decoratedUserinfoClient) GetEncryptionAlg() (alg string) {
+	return d.client.GetUserinfoEncryptedResponseAlg()
+}
+
+func (d decoratedUserinfoClient) GetEncryptionEnc() (enc string) {
+	return d.client.GetUserinfoEncryptedResponseEnc()
+}
+
+func (d decoratedUserinfoClient) IsClientSigned() (is bool) {
+	return false
+}
+
+func (d decoratedUserinfoClient) GetID() string {
+	return d.client.GetID()
+}
+
+func (d decoratedUserinfoClient) GetClientSecretPlainText() (secret []byte, ok bool, err error) {
+	return d.client.GetClientSecretPlainText()
+}
+
+func (d decoratedUserinfoClient) GetJSONWebKeys() (jwks *jose.JSONWebKeySet) {
+	return d.client.GetJSONWebKeys()
+}
+
+func (d decoratedUserinfoClient) GetJSONWebKeysURI() (uri string) {
+	return d.client.GetJSONWebKeysURI()
 }

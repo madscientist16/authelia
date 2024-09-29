@@ -88,11 +88,9 @@ func OpenIDConnectUserinfo(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter,
 		return
 	}
 
-	claims := map[string]any{}
+	claims := jwt.MapClaims{}
 
 	ctx.Logger.WithFields(map[string]any{"claims": original, "requested_scopes": requester.GetRequestedScopes(), "granted_scopes": requester.GetGrantedScopes()}).Debug("Original Values")
-
-	strategy := ctx.Providers.OpenIDConnect.GetScopeStrategy(ctx)
 
 	var detailer oidc.UserDetailer
 
@@ -103,7 +101,7 @@ func OpenIDConnectUserinfo(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter,
 			ctx.Logger.WithError(err).Errorf("UserInfo Request with id '%s' on client with id '%s' error occurred loading user information", requestID, client.GetID())
 		}
 	} else {
-		client.GetClaimsStrategy().PopulateUserInfoClaims(ctx, strategy, client, requester.GetGrantedScopes(), requests, detailer, ctx.Clock.Now(), original, claims)
+		client.GetClaimsStrategy().PopulateUserInfoClaims(ctx, ctx.Providers.OpenIDConnect.GetScopeStrategy(ctx), client, requester.GetGrantedScopes(), requests, detailer, ctx.Clock.Now(), original, claims)
 	}
 
 	var token string
@@ -121,15 +119,9 @@ func OpenIDConnectUserinfo(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter,
 
 		_ = json.NewEncoder(rw).Encode(claims)
 	default:
-		var jwk *oidc.JWK
+		jwtClient := oidc.NewUserinfoClient(client)
 
-		if jwk = ctx.Providers.OpenIDConnect.KeyManager.Get(ctx, client.GetUserinfoSignedResponseKeyID(), alg); jwk == nil {
-			errorsx.WriteJSONError(rw, req, errors.WithStack(oauthelia2.ErrServerError.WithHintf("Unsupported UserInfo signing algorithm '%s'.", alg)))
-
-			return
-		}
-
-		ctx.Logger.Debugf("UserInfo Request with id '%s' on client with id '%s' is being returned signed as per the registered client configuration with key id '%s' using the '%s' algorithm", requestID, client.GetID(), jwk.KeyID(), jwk.JWK().Algorithm)
+		ctx.Logger.Debugf("UserInfo Request with id '%s' on client with id '%s' is being returned signed as per the registered client configuration with key id '%s' using the '%s' algorithm", requestID, client.GetID(), jwtClient.GetSigningKeyID(), jwtClient.GetSigningAlg())
 
 		var jti uuid.UUID
 
@@ -142,13 +134,9 @@ func OpenIDConnectUserinfo(ctx *middlewares.AutheliaCtx, rw http.ResponseWriter,
 		claims[oidc.ClaimJWTID] = jti.String()
 		claims[oidc.ClaimIssuedAt] = time.Now().UTC().Unix()
 
-		headers := &jwt.Headers{
-			Extra: map[string]any{
-				oidc.JWTHeaderKeyIdentifier: jwk.KeyID(),
-			},
-		}
+		strategy := ctx.Providers.OpenIDConnect.GetJWTStrategy(ctx)
 
-		if token, _, err = jwk.Strategy().Generate(req.Context(), claims, headers); err != nil {
+		if token, _, err = strategy.Encode(ctx, claims, jwt.WithClient(jwtClient)); err != nil {
 			errorsx.WriteJSONError(rw, req, err)
 
 			return

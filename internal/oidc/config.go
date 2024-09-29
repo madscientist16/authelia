@@ -26,9 +26,8 @@ import (
 	"github.com/authelia/authelia/v4/internal/utils"
 )
 
-func NewConfig(config *schema.IdentityProvidersOpenIDConnect, signer jwt.Signer, templates *templates.Provider) (c *Config) {
+func NewConfig(config *schema.IdentityProvidersOpenIDConnect, issuer *Issuer, templates *templates.Provider) (c *Config) {
 	c = &Config{
-		Signer:                     signer,
 		GlobalSecret:               []byte(utils.HashSHA256FromString(config.HMACSecret)),
 		SendDebugMessagesToClients: config.EnableClientDebugMessages,
 		MinParameterEntropy:        config.MinimumParameterEntropy,
@@ -49,22 +48,28 @@ func NewConfig(config *schema.IdentityProvidersOpenIDConnect, signer jwt.Signer,
 			Enable:                       config.Discovery.JWTResponseAccessTokens,
 			EnableStatelessIntrospection: config.EnableJWTAccessTokenStatelessIntrospection,
 		},
-		JWTSecuredAuthorizationLifespan:                    config.Lifespans.JWTSecuredAuthorization,
-		RevokeRefreshTokensExplicit:                        true,
+		Strategy:                        StrategyConfig{},
+		JWTSecuredAuthorizationLifespan: config.Lifespans.JWTSecuredAuthorization,
+		RevokeRefreshTokensExplicit:     true,
 		EnforceRevokeFlowRevokeRefreshTokensExplicitClient: true,
 		ClientCredentialsFlowImplicitGrantRequested:        true,
 		Templates: templates,
 	}
 
+	c.Strategy.JWT = &jwt.DefaultStrategy{
+		Config: c,
+		Issuer: issuer,
+	}
+
 	if config.Discovery.JWTResponseAccessTokens {
-		c.Strategy.Core = oauth2.NewCoreStrategy(c, "authelia_%s_", signer)
+		c.Strategy.Core = oauth2.NewCoreStrategy(c, "authelia_%s_", c.Strategy.JWT)
 	} else {
 		c.Strategy.Core = oauth2.NewCoreStrategy(c, "authelia_%s_", nil)
 	}
 
 	c.Strategy.OpenID = &openid.DefaultStrategy{
-		Signer: signer,
-		Config: c,
+		Strategy: c.Strategy.JWT,
+		Config:   c,
 	}
 
 	return c
@@ -72,8 +77,6 @@ func NewConfig(config *schema.IdentityProvidersOpenIDConnect, signer jwt.Signer,
 
 // Config is an implementation of the oauthelia2.Configurator.
 type Config struct {
-	Signer jwt.Signer
-
 	// GlobalSecret is the global secret used to sign and verify signatures.
 	GlobalSecret []byte
 
@@ -125,6 +128,19 @@ type Config struct {
 	Templates *templates.Provider
 }
 
+func (c *Config) GetJWKSFetcherStrategy(ctx context.Context) (strategy jwt.JWKSFetcherStrategy) {
+	if c.Strategy.JWKSFetcher == nil {
+		c.Strategy.JWKSFetcher = oauthelia2.NewDefaultJWKSFetcherStrategy()
+	}
+
+	return c.Strategy.JWKSFetcher
+}
+
+func (c *Config) GetJWTStrategy(ctx context.Context) jwt.Strategy {
+	//TODO implement me
+	panic("implement me")
+}
+
 type RFC8693Config struct {
 	TokenTypes                map[string]oauthelia2.RFC8693TokenType
 	DefaultRequestedTokenType string
@@ -150,7 +166,8 @@ type StrategyConfig struct {
 	OpenID               openid.OpenIDConnectTokenStrategy
 	Audience             oauthelia2.AudienceMatchingStrategy
 	Scope                oauthelia2.ScopeStrategy
-	JWKSFetcher          oauthelia2.JWKSFetcherStrategy
+	JWT                  jwt.Strategy
+	JWKSFetcher          jwt.JWKSFetcherStrategy
 	ClientAuthentication oauthelia2.ClientAuthenticationStrategy
 }
 
@@ -222,14 +239,14 @@ type ProofKeyCodeExchangeConfig struct {
 
 // LoadHandlers reloads the handlers based on the current configuration.
 func (c *Config) LoadHandlers(store *Store) {
-	validator := openid.NewOpenIDConnectRequestValidator(c.Signer, c)
+	validator := openid.NewOpenIDConnectRequestValidator(c.Strategy.JWT, c)
 
 	var statelessJWT any
 
 	if c.JWTAccessToken.Enable && c.JWTAccessToken.EnableStatelessIntrospection {
 		statelessJWT = &oauth2.StatelessJWTValidator{
-			Signer: c.Signer,
-			Config: c,
+			Strategy: c.Strategy.JWT,
+			Config:   c,
 		}
 	}
 
@@ -533,9 +550,9 @@ func (c *Config) GetIntrospectionIssuer(ctx context.Context) (issuer string) {
 	return c.GetIssuerFallback(ctx, c.Issuers.Introspection)
 }
 
-// GetIntrospectionJWTResponseSigner returns jwt.Signer for Introspection JWT Responses.
-func (c *Config) GetIntrospectionJWTResponseSigner(ctx context.Context) jwt.Signer {
-	return c.Signer
+// GetIntrospectionJWTResponseStrategy returns jwt.Signer for Introspection JWT Responses.
+func (c *Config) GetIntrospectionJWTResponseStrategy(ctx context.Context) jwt.Strategy {
+	return c.Strategy.JWT
 }
 
 // GetDisableRefreshTokenValidation returns the disable refresh token validation flag.
@@ -552,9 +569,9 @@ func (c *Config) GetJWTSecuredAuthorizeResponseModeLifespan(ctx context.Context)
 	return c.JWTSecuredAuthorizationLifespan
 }
 
-// GetJWTSecuredAuthorizeResponseModeSigner returns jwt.Signer for JWT Secured Authorization Responses.
-func (c *Config) GetJWTSecuredAuthorizeResponseModeSigner(ctx context.Context) (signer jwt.Signer) {
-	return c.Signer
+// GetJWTSecuredAuthorizeResponseModeStrategy returns jwt.Signer for JWT Secured Authorization Responses.
+func (c *Config) GetJWTSecuredAuthorizeResponseModeStrategy(ctx context.Context) (strategy jwt.Strategy) {
+	return c.Strategy.JWT
 }
 
 // GetJWTSecuredAuthorizeResponseModeIssuer returns the issuer for JWT Secured Authorization Responses.
@@ -678,15 +695,6 @@ func (c *Config) GetHMACHasher(ctx context.Context) func() (h hash.Hash) {
 // GetSendDebugMessagesToClients returns the send debug messages to clients.
 func (c *Config) GetSendDebugMessagesToClients(ctx context.Context) (send bool) {
 	return c.SendDebugMessagesToClients
-}
-
-// GetJWKSFetcherStrategy returns the JWKS fetcher strategy.
-func (c *Config) GetJWKSFetcherStrategy(ctx context.Context) (strategy oauthelia2.JWKSFetcherStrategy) {
-	if c.Strategy.JWKSFetcher == nil {
-		c.Strategy.JWKSFetcher = oauthelia2.NewDefaultJWKSFetcherStrategy()
-	}
-
-	return c.Strategy.JWKSFetcher
 }
 
 // GetClientAuthenticationStrategy returns the client authentication strategy.
