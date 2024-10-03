@@ -3617,7 +3617,7 @@ func TestValidateOIDCIssuer(t *testing.T) {
 					{Algorithm: oidc.SigningAlgRSAUsingSHA256, Use: oidc.KeyUseSignature},
 				},
 				Discovery: schema.IdentityProvidersOpenIDConnectDiscovery{
-					DefaultKeyIDs: map[string]string{},
+					DefaultSigKeyIDs: map[string]string{},
 				},
 			},
 			[]string{
@@ -3636,7 +3636,7 @@ func TestValidateOIDCIssuer(t *testing.T) {
 					{KeyID: "example", Algorithm: oidc.SigningAlgRSAUsingSHA256, Use: oidc.KeyUseSignature},
 				},
 				Discovery: schema.IdentityProvidersOpenIDConnectDiscovery{
-					DefaultKeyIDs: map[string]string{},
+					DefaultSigKeyIDs: map[string]string{},
 				},
 			},
 			[]string{

@@ -539,11 +539,11 @@ func TestShouldNotPanicJWKNilKey(t *testing.T) {
 	assert.Len(t, val.Warnings(), 0)
 
 	require.NotPanics(t, func() {
-		validator.ValidateIdentityProviders(validator.NewValidateCtx(), &config.IdentityProviders, val)
+		validator.ValidateIdentityProviders(validator.NewValidateCtx(), config, val)
 	})
 
 	assert.Len(t, val.Errors(), 5)
-	require.Len(t, val.Warnings(), 1)
+	require.Len(t, val.Warnings(), 4)
 
 	assert.EqualError(t, val.Errors()[0], "identity_providers: oidc: jwks: key #1 with key id 'abc': option 'key' must be provided")
 	assert.EqualError(t, val.Errors()[1], "identity_providers: oidc: jwks: key #2: option 'key' must be provided")
