@@ -61,6 +61,7 @@ totp:
 webauthn:
   metadata:
     enabled: true
+    enable_passkey_login: true
     validate_entry: false
 
 access_control:
