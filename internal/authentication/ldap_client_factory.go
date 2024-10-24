@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/go-ldap/ldap/v3"
@@ -22,7 +23,7 @@ type LDAPClientFactory interface {
 }
 
 // NewLDAPClientFactoryStandard create a concrete ldap connection factory.
-func NewLDAPClientFactoryStandard(config *schema.AuthenticationBackendLDAP, certs *x509.CertPool, dialer LDAPClientDialer) *LDAPClientFactoryStandard {
+func NewLDAPClientFactoryStandard(config *schema.AuthenticationBackendLDAP, certs *x509.CertPool, dialer LDAPClientDialer) *LDAPClientStandardFactory {
 	if dialer == nil {
 		dialer = &LDAPClientDialerStandard{}
 	}
@@ -34,7 +35,7 @@ func NewLDAPClientFactoryStandard(config *schema.AuthenticationBackendLDAP, cert
 		ldap.DialWithTLSConfig(tlsc),
 	}
 
-	return &LDAPClientFactoryStandard{
+	return &LDAPClientStandardFactory{
 		config: config,
 		tls:    tlsc,
 		opts:   opts,
@@ -42,19 +43,19 @@ func NewLDAPClientFactoryStandard(config *schema.AuthenticationBackendLDAP, cert
 	}
 }
 
-// LDAPClientFactoryStandard the production implementation of an ldap connection factory.
-type LDAPClientFactoryStandard struct {
+// LDAPClientStandardFactory the production implementation of an ldap connection factory.
+type LDAPClientStandardFactory struct {
 	config *schema.AuthenticationBackendLDAP
 	tls    *tls.Config
 	opts   []ldap.DialOpt
 	dialer LDAPClientDialer
 }
 
-func (f *LDAPClientFactoryStandard) Initialize() (err error) {
+func (f *LDAPClientStandardFactory) Initialize() (err error) {
 	return nil
 }
 
-func (f *LDAPClientFactoryStandard) GetClient(opts ...LDAPClientFactoryOption) (client ldap.Client, err error) {
+func (f *LDAPClientStandardFactory) GetClient(opts ...LDAPClientFactoryOption) (client ldap.Client, err error) {
 	config := &LDAPClientFactoryOptions{
 		Address:  f.config.Address.String(),
 		Username: f.config.User,
@@ -92,12 +93,12 @@ func (f *LDAPClientFactoryStandard) GetClient(opts ...LDAPClientFactoryOption) (
 	return client, nil
 }
 
-func (f *LDAPClientFactoryStandard) Shutdown() (err error) {
+func (f *LDAPClientStandardFactory) Shutdown() (err error) {
 	return nil
 }
 
 // NewLDAPConnectionFactoryPooled is a decorator for a LDAPClientFactory that performs pooling.
-func NewLDAPConnectionFactoryPooled(factory LDAPClientFactory, count, retries int, timeout time.Duration) (pool *LDAPClientFactoryPooled) {
+func NewLDAPConnectionFactoryPooled(factory LDAPClientFactory, count, retries int, timeout time.Duration) (pool *LDAPClientPooledFactory) {
 	if count <= 0 {
 		count = 5
 	}
@@ -112,7 +113,7 @@ func NewLDAPConnectionFactoryPooled(factory LDAPClientFactory, count, retries in
 
 	sleep := timeout / time.Duration(retries)
 
-	return &LDAPClientFactoryPooled{
+	return &LDAPClientPooledFactory{
 		factory: factory,
 		count:   count,
 		timeout: timeout,
@@ -120,13 +121,12 @@ func NewLDAPConnectionFactoryPooled(factory LDAPClientFactory, count, retries in
 	}
 }
 
-// LDAPClientFactoryPooled is a LDAPClientFactory that takes another LDAPClientFactory and pools the
+// LDAPClientPooledFactory is a LDAPClientFactory that takes another LDAPClientFactory and pools the
 // factory generated connections using a channel for thread safety.
-type LDAPClientFactoryPooled struct {
+type LDAPClientPooledFactory struct {
 	factory LDAPClientFactory
 
-	count  int
-	active int
+	count int
 
 	timeout time.Duration
 	sleep   time.Duration
@@ -134,9 +134,12 @@ type LDAPClientFactoryPooled struct {
 	clients chan *LDAPClientPooled
 
 	closing bool
+
+	mu sync.Mutex
+	wg sync.WaitGroup
 }
 
-func (f *LDAPClientFactoryPooled) Initialize() (err error) {
+func (f *LDAPClientPooledFactory) Initialize() (err error) {
 	f.clients = make(chan *LDAPClientPooled, f.count)
 
 	var (
@@ -162,7 +165,7 @@ func (f *LDAPClientFactoryPooled) Initialize() (err error) {
 }
 
 // GetClient opens new client using the pool.
-func (f *LDAPClientFactoryPooled) GetClient(opts ...LDAPClientFactoryOption) (conn ldap.Client, err error) {
+func (f *LDAPClientPooledFactory) GetClient(opts ...LDAPClientFactoryOption) (conn ldap.Client, err error) {
 	if len(opts) != 0 {
 		return f.factory.GetClient(opts...)
 	}
@@ -170,28 +173,42 @@ func (f *LDAPClientFactoryPooled) GetClient(opts ...LDAPClientFactoryOption) (co
 	return f.acquire(context.Background())
 }
 
-func (f *LDAPClientFactoryPooled) new() (pooled *LDAPClientPooled, err error) {
-	c, l := cap(f.clients), len(f.clients)
+func (f *LDAPClientPooledFactory) new() (pooled *LDAPClientPooled, err error) {
+	f.mu.Lock()
 
-	if f.active >= f.count || (c != 0 && c == l) {
+	capacity, active := cap(f.clients), len(f.clients)
+
+	if active >= capacity {
+		f.mu.Unlock()
+
 		return nil, fmt.Errorf("error occurred establishing new client for the pool: pool is already the maximum size")
 	}
 
 	var client ldap.Client
 
 	if client, err = f.factory.GetClient(); err != nil {
+		f.mu.Unlock()
+
 		return nil, err
 	}
 
-	f.active += 1
+	f.wg.Add(1)
+
+	f.mu.Unlock()
 
 	return &LDAPClientPooled{pool: f, Client: client}, nil
 }
 
-func (f *LDAPClientFactoryPooled) relinquish(client *LDAPClientPooled) (err error) {
+func (f *LDAPClientPooledFactory) relinquish(client *LDAPClientPooled) (err error) {
+	f.mu.Lock()
+
 	if f.closing {
+		f.mu.Unlock()
+
 		return client.Client.Close()
 	}
+
+	f.mu.Unlock()
 
 	// Prevent extra connections from being added to the f and hanging around.
 	if cap(f.clients) == len(f.clients) {
@@ -203,10 +220,16 @@ func (f *LDAPClientFactoryPooled) relinquish(client *LDAPClientPooled) (err erro
 	return nil
 }
 
-func (f *LDAPClientFactoryPooled) acquire(ctx context.Context) (client *LDAPClientPooled, err error) {
+func (f *LDAPClientPooledFactory) acquire(ctx context.Context) (client *LDAPClientPooled, err error) {
+	f.mu.Lock()
+
 	if f.closing {
+		f.mu.Unlock()
+
 		return nil, fmt.Errorf("error acquiring client: the pool is closed")
 	}
+
+	f.mu.Unlock()
 
 	if cap(f.clients) != f.count {
 		if err = f.Initialize(); err != nil {
@@ -222,16 +245,21 @@ func (f *LDAPClientFactoryPooled) acquire(ctx context.Context) (client *LDAPClie
 		return nil, ctx.Err()
 	case client = <-f.clients:
 		if client.IsClosing() || client.Client == nil {
-			f.active -= 1
+			f.wg.Done()
 
 			for {
-				if client, err = f.new(); err != nil {
-					time.Sleep(f.sleep)
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				default:
+					if client, err = f.new(); err != nil {
+						time.Sleep(f.sleep)
 
-					continue
+						continue
+					}
+
+					return client, nil
 				}
-
-				return client, nil
 			}
 		}
 
@@ -239,14 +267,34 @@ func (f *LDAPClientFactoryPooled) acquire(ctx context.Context) (client *LDAPClie
 	}
 }
 
-func (f *LDAPClientFactoryPooled) Shutdown() (err error) {
+func (f *LDAPClientPooledFactory) Shutdown() (err error) {
+	f.mu.Lock()
+
 	f.closing = true
+
+	f.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+
+	defer cancel()
+
+	go func() {
+		select {
+		case client := <-f.clients:
+			_ = client.Client.Close()
+			f.wg.Done()
+		case <-ctx.Done():
+			return
+		}
+	}()
+
+	f.wg.Wait()
+
+	f.mu.Lock()
 
 	close(f.clients)
 
-	for client := range f.clients {
-		_ = client.Client.Close()
-	}
+	f.mu.Unlock()
 
 	return nil
 }
@@ -254,19 +302,12 @@ func (f *LDAPClientFactoryPooled) Shutdown() (err error) {
 // LDAPClientPooled is a decorator for the ldap.Client which handles the pooling functionality. i.e. prevents the client
 // from being closed and instead relinquishes the connection back to the pool.
 type LDAPClientPooled struct {
-	pool *LDAPClientFactoryPooled
+	pool *LDAPClientPooledFactory
 
 	ldap.Client
 }
 
 // Close the LDAPClientPooled by relinquishing access to it and making it available in the pool again.
 func (c *LDAPClientPooled) Close() (err error) {
-	client, pool := c.Client, c.pool
-
-	// We dereference here to prevent this struct from being reused in an improper way.
-	// Messing up the connection state or using it in two routines would be much worse than a panic which we can
-	// recover() from.
-	c.pool, c.Client = nil, nil
-
-	return pool.relinquish(&LDAPClientPooled{pool: pool, Client: client})
+	return c.pool.relinquish(c)
 }
